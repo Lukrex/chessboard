@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chessboard</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+        }
+        .chessboard {
+            display: grid;
+            grid-template-columns: repeat(8, 60px);
+            grid-template-rows: repeat(8, 60px);
+            border: 2px solid #333;
+        }
+        .square {
+            width: 60px;
+            height: 60px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            font-size: 48px;
+            font-weight: bold;
+            position: relative;
+        }
+        .square.light {
+            background-color: #f0d9b5;
+        }
+        .square.dark {
+            background-color: #b58863;
+        }
+        .piece {
+            cursor: pointer;
+        }
+        .dot {
+            width: 15px;
+            height: 15px;
+            background-color: rgba(0, 0, 0, 0.5);
+            border-radius: 50%;
+            position: absolute;
+        }
+    </style>
+</head>
+<body>
+    <div class="chessboard" id="chessboard"></div>
+
+    <script>
+        const chessboard = document.getElementById('chessboard');
+        const initialBoard = [
+            ['♜', '♞', '♝', '♛', '♚', '♝', '♞', '♜'],
+            ['♟', '♟', '♟', '♟', '♟', '♟', '♟', '♟'],
+            ['', '', '', '', '', '', '', ''],
+            ['', '', '', '', '', '', '', ''],
+            ['', '', '', '', '', '', '', ''],
+            ['', '', '', '', '', '', '', ''],
+            ['♙', '♙', '♙', '♙', '♙', '♙', '♙', '♙'],
+            ['♖', '♘', '♗', '♕', '♔', '♗', '♘', '♖']
+        ];
+
+        let selectedPiece = null;
+        let selectedPosition = null;
+        let currentTurn = 'white'; // White starts
+
+        function createChessboard() {
+            chessboard.innerHTML = '';
+            for (let row = 0; row < 8; row++) {
+                for (let col = 0; col < 8; col++) {
+                    const square = document.createElement('div');
+                    square.classList.add('square', (row + col) % 2 === 0 ? 'light' : 'dark');
+                    square.dataset.row = row;
+                    square.dataset.col = col;
+
+                    if (initialBoard[row][col]) {
+                        const piece = document.createElement('span');
+                        piece.textContent = initialBoard[row][col];
+                        piece.classList.add('piece');
+                        piece.dataset.row = row;
+                        piece.dataset.col = col;
+                        piece.addEventListener('click', () => selectPiece(row, col));
+                        square.appendChild(piece);
+                    }
+
+                    square.addEventListener('click', () => movePiece(row, col));
+                    chessboard.appendChild(square);
+                }
+            }
+        }
+
+        function selectPiece(row, col) {
+            clearDots();
+            selectedPiece = initialBoard[row][col];
+            selectedPosition = { row, col };
+
+            // Highlight legal moves (for simplicity, pawns move forward one square)
+            const legalMoves = getLegalMoves(row, col, selectedPiece);
+            legalMoves.forEach(([r, c]) => {
+                const square = document.querySelector(`.square[data-row="${r}"][data-col="${c}"]`);
+                const dot = document.createElement('div');
+                dot.classList.add('dot');
+                square.appendChild(dot);
+            });
+        }
+
+        function getLegalMoves(row, col, piece) {
+            const moves = [];
+            const directions = {
+                rook: [
+                    [1, 0], [-1, 0], [0, 1], [0, -1]
+                ],
+                bishop: [
+                    [1, 1], [1, -1], [-1, 1], [-1, -1]
+                ],
+                queen: [
+                    [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]
+                ],
+                knight: [
+                    [2, 1], [2, -1], [-2, 1], [-2, -1],
+                    [1, 2], [1, -2], [-1, 2], [-1, -2]
+                ],
+                king: [
+                    [1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]
+                ]
+            };
+
+            if (piece === '♙') { // White pawn
+                if (row > 0 && !initialBoard[row - 1][col]) moves.push([row - 1, col]);
+                if (row === 6 && !initialBoard[row - 2][col] && !initialBoard[row - 1][col]) moves.push([row - 2, col]); // Double move
+                if (row > 0 && col > 0 && isOpponentPiece(piece, initialBoard[row - 1][col - 1])) moves.push([row - 1, col - 1]); // Capture left
+                if (row > 0 && col < 7 && isOpponentPiece(piece, initialBoard[row - 1][col + 1])) moves.push([row - 1, col + 1]); // Capture right
+                if (row === 0) promotePawn(row, col, 'white'); // Promotion
+            } else if (piece === '♟') { // Black pawn
+                if (row < 7 && !initialBoard[row + 1][col]) moves.push([row + 1, col]);
+                if (row === 1 && !initialBoard[row + 2][col] && !initialBoard[row + 1][col]) moves.push([row + 2, col]); // Double move
+                if (row < 7 && col > 0 && isOpponentPiece(piece, initialBoard[row + 1][col - 1])) moves.push([row + 1, col - 1]); // Capture left
+                if (row < 7 && col < 7 && isOpponentPiece(piece, initialBoard[row + 1][col + 1])) moves.push([row + 1, col + 1]); // Capture right
+                if (row === 7) promotePawn(row, col, 'black'); // Promotion
+            } else if (piece === '♜' || piece === '♖') { // Rook
+                moves.push(...getDirectionalMoves(row, col, directions.rook));
+            } else if (piece === '♝' || piece === '♗') { // Bishop
+                moves.push(...getDirectionalMoves(row, col, directions.bishop));
+            } else if (piece === '♛' || piece === '♕') { // Queen
+                moves.push(...getDirectionalMoves(row, col, directions.queen));
+            } else if (piece === '♞' || piece === '♘') { // Knight
+                moves.push(...getKnightMoves(row, col, directions.knight));
+            } else if (piece === '♚' || piece === '♔') { // King
+                moves.push(...getKingMoves(row, col, directions.king));
+                moves.push(...getCastlingMoves(row, col, piece)); // Castling
+            }
+            return moves;
+        }
+
+        function getKingMoves(row, col, directions) {
+            const moves = [];
+            for (const [dr, dc] of directions) {
+                const r = row + dr;
+                const c = col + dc;
+                if (r >= 0 && r < 8 && c >= 0 && c < 8) {
+                    if (!initialBoard[r][c] || isOpponentPiece(initialBoard[row][col], initialBoard[r][c])) {
+                        moves.push([r, c]);
+                    }
+                }
+            }
+            return moves;
+        }
+
+        function getCastlingMoves(row, col, piece) {
+            const moves = [];
+            if (piece === '♔' && row === 7 && col === 4) { // White king
+                if (!initialBoard[7][5] && !initialBoard[7][6] && initialBoard[7][7] === '♖') moves.push([7, 6]); // Kingside
+                if (!initialBoard[7][3] && !initialBoard[7][2] && !initialBoard[7][1] && initialBoard[7][0] === '♖') moves.push([7, 2]); // Queenside
+            } else if (piece === '♚' && row === 0 && col === 4) { // Black king
+                if (!initialBoard[0][5] && !initialBoard[0][6] && initialBoard[0][7] === '♜') moves.push([0, 6]); // Kingside
+                if (!initialBoard[0][3] && !initialBoard[0][2] && !initialBoard[0][1] && initialBoard[0][0] === '♜') moves.push([0, 2]); // Queenside
+            }
+            return moves;
+        }
+
+        function promotePawn(row, col, color) {
+            const promotionPiece = color === 'white' ? '♕' : '♛'; // Promote to queen by default
+            initialBoard[row][col] = promotionPiece;
+            createChessboard();
+        }
+
+        function getDirectionalMoves(row, col, directions) {
+            const moves = [];
+            for (const [dr, dc] of directions) {
+                let r = row + dr;
+                let c = col + dc;
+                while (r >= 0 && r < 8 && c >= 0 && c < 8) {
+                    if (initialBoard[r][c]) {
+                        // Stop if a piece is encountered (capture allowed)
+                        if (isOpponentPiece(initialBoard[row][col], initialBoard[r][c])) {
+                            moves.push([r, c]);
+                        }
+                        break;
+                    }
+                    moves.push([r, c]);
+                    r += dr;
+                    c += dc;
+                }
+            }
+            return moves;
+        }
+
+        function getKnightMoves(row, col, directions) {
+            const moves = [];
+            for (const [dr, dc] of directions) {
+                const r = row + dr;
+                const c = col + dc;
+                if (r >= 0 && r < 8 && c >= 0 && c < 8) {
+                    if (!initialBoard[r][c] || isOpponentPiece(initialBoard[row][col], initialBoard[r][c])) {
+                        moves.push([r, c]);
+                    }
+                }
+            }
+            return moves;
+        }
+
+        function isOpponentPiece(piece1, piece2) {
+            const isWhite = piece => '♙♖♘♗♕♔'.includes(piece);
+            const isBlack = piece => '♟♜♞♝♛♚'.includes(piece);
+            return (isWhite(piece1) && isBlack(piece2)) || (isBlack(piece1) && isWhite(piece2));
+        }
+
+        function movePiece(row, col) {
+            if (selectedPiece && selectedPosition) {
+                const legalMoves = getLegalMoves(selectedPosition.row, selectedPosition.col, selectedPiece);
+                const isLegalMove = legalMoves.some(([r, c]) => r === row && c === col);
+
+                if (isLegalMove) {
+                    const pieceColor = isWhitePiece(selectedPiece) ? 'white' : 'black';
+                    if (pieceColor !== currentTurn) {
+                        alert(`It's ${currentTurn}'s turn!`);
+                        return;
+                    }
+
+                    // Move the piece
+                    initialBoard[selectedPosition.row][selectedPosition.col] = '';
+                    initialBoard[row][col] = selectedPiece;
+
+                    // Switch turns
+                    currentTurn = currentTurn === 'white' ? 'black' : 'white';
+
+                    selectedPiece = null;
+                    selectedPosition = null;
+                    createChessboard();
+                }
+            }
+        }
+
+        function isWhitePiece(piece) {
+            return '♙♖♘♗♕♔'.includes(piece);
+        }
+
+        function isBlackPiece(piece) {
+            return '♟♜♞♝♛♚'.includes(piece);
+        }
+
+        function clearDots() {
+            document.querySelectorAll('.dot').forEach(dot => dot.remove());
+        }
+
+        createChessboard();
+    </script>
+</body>
+</html>
