@@ -108,6 +108,7 @@
         }
 
         function getLegalMoves(row, col, piece) {
+            console.log(`Getting legal moves for ${piece} at (${row}, ${col})`);
             const moves = [];
             const directions = {
                 rook: [
@@ -152,6 +153,7 @@
                 moves.push(...getKingMoves(row, col, directions.king));
                 moves.push(...getCastlingMoves(row, col, piece)); // Castling
             }
+            console.log(`Legal moves for ${piece} at (${row}, ${col}):`, moves);
             return moves;
         }
 
@@ -229,6 +231,7 @@
         }
 
         function movePiece(row, col) {
+            console.log(`Attempting to move to (${row}, ${col})`);
             if (selectedPiece && selectedPosition) {
                 const legalMoves = getLegalMoves(selectedPosition.row, selectedPosition.col, selectedPiece);
                 const isLegalMove = legalMoves.some(([r, c]) => r === row && c === col);
@@ -240,7 +243,13 @@
                         return;
                     }
 
-                    // Move the piece
+                    // Capture the piece if present
+                    const capturedPiece = initialBoard[row][col];
+                    if (capturedPiece) {
+                        console.log(`Captured piece: ${capturedPiece}`);
+                    }
+
+                    // Move the selected piece
                     initialBoard[selectedPosition.row][selectedPosition.col] = '';
                     initialBoard[row][col] = selectedPiece;
 
@@ -250,8 +259,21 @@
                     selectedPiece = null;
                     selectedPosition = null;
                     createChessboard();
+
+                    // If it's Black's turn, let the engine play
+                    if (currentTurn === 'black') {
+                        playBlackEngine();
+                    }
+                } else {
+                    console.log(`Invalid move to (${row}, ${col})`);
+                }
+            } else {
+                // Select the piece at the clicked position
+                if (initialBoard[row][col]) {
+                    selectPiece(row, col);
                 }
             }
+            console.log(`Board after move:`, initialBoard);
         }
 
         function isWhitePiece(piece) {
@@ -264,6 +286,128 @@
 
         function clearDots() {
             document.querySelectorAll('.dot').forEach(dot => dot.remove());
+        }
+
+        function evaluateBoard() {
+            const pieceValues = {
+                '♙': 1, '♖': 5, '♘': 3, '♗': 3, '♕': 9, '♔': 100,
+                '♟': -1, '♜': -5, '♞': -3, '♝': -3, '♛': -9, '♚': -100
+            };
+
+            let score = 0;
+            for (let row = 0; row < 8; row++) {
+                for (let col = 0; col < 8; col++) {
+                    const piece = initialBoard[row][col];
+                    if (piece) {
+                        score += pieceValues[piece] || 0;
+                    }
+                }
+            }
+            return score;
+        }
+
+        function minimax(depth, isMaximizing, alpha, beta) {
+            if (depth === 0) {
+                return evaluateBoard();
+            }
+
+            const allMoves = [];
+            for (let row = 0; row < 8; row++) {
+                for (let col = 0; col < 8; col++) {
+                    const piece = initialBoard[row][col];
+                    if ((isMaximizing && isBlackPiece(piece)) || (!isMaximizing && isWhitePiece(piece))) {
+                        const legalMoves = getLegalMoves(row, col, piece);
+                        legalMoves.forEach(([r, c]) => {
+                            allMoves.push({ from: [row, col], to: [r, c] });
+                        });
+                    }
+                }
+            }
+
+            if (isMaximizing) {
+                let maxEval = -Infinity;
+                for (const move of allMoves) {
+                    const { from, to } = move;
+                    const capturedPiece = makeMove(from, to);
+                    const eval = minimax(depth - 1, false, alpha, beta);
+                    undoMove(from, to, capturedPiece);
+                    maxEval = Math.max(maxEval, eval);
+                    alpha = Math.max(alpha, eval);
+                    if (beta <= alpha) {
+                        break; // Prune the branch
+                    }
+                }
+                return maxEval;
+            } else {
+                let minEval = Infinity;
+                for (const move of allMoves) {
+                    const { from, to } = move;
+                    const capturedPiece = makeMove(from, to);
+                    const eval = minimax(depth - 1, true, alpha, beta);
+                    undoMove(from, to, capturedPiece);
+                    minEval = Math.min(minEval, eval);
+                    beta = Math.min(beta, eval);
+                    if (beta <= alpha) {
+                        break; // Prune the branch
+                    }
+                }
+                return minEval;
+            }
+        }
+
+        function makeMove(from, to) {
+            const [fromRow, fromCol] = from;
+            const [toRow, toCol] = to;
+            const capturedPiece = initialBoard[toRow][toCol];
+            initialBoard[toRow][toCol] = initialBoard[fromRow][fromCol];
+            initialBoard[fromRow][fromCol] = '';
+            return capturedPiece;
+        }
+
+        function undoMove(from, to, capturedPiece) {
+            const [fromRow, fromCol] = from;
+            const [toRow, toCol] = to;
+            initialBoard[fromRow][fromCol] = initialBoard[toRow][toCol];
+            initialBoard[toRow][toCol] = capturedPiece;
+        }
+
+        function playBlackEngine() {
+            console.log(`Black's turn to play`);
+            let bestMove = null;
+            let bestValue = -Infinity;
+
+            const allMoves = [];
+            for (let row = 0; row < 8; row++) {
+                for (let col = 0; col < 8; col++) {
+                    const piece = initialBoard[row][col];
+                    if (isBlackPiece(piece)) {
+                        const legalMoves = getLegalMoves(row, col, piece);
+                        legalMoves.forEach(([r, c]) => {
+                            allMoves.push({ from: [row, col], to: [r, c] });
+                        });
+                    }
+                }
+            }
+
+            for (const move of allMoves) {
+                const { from, to } = move;
+                const capturedPiece = makeMove(from, to);
+                const moveValue = minimax(2, false, -Infinity, Infinity); // Depth number
+                undoMove(from, to, capturedPiece);
+
+                if (moveValue > bestValue) {
+                    bestValue = moveValue;
+                    bestMove = move;
+                }
+            }
+
+            if (bestMove) {
+                const { from, to } = bestMove;
+                makeMove(from, to);
+                currentTurn = 'white';
+                createChessboard();
+            }
+            console.log(`Best move for Black:`, bestMove);
         }
 
         createChessboard();
